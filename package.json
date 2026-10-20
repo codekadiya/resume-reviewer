@@ -1,0 +1,22 @@
+{
+  "name": "resume-reviewer",
+  "version": "1.0.0",
+  "description": "Upload a resume PDF and get structured AI feedback (strengths, gaps, rewrites) via Roar AI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "express": "^5.3.0",
+    "multer": "^2.4.0",
+    "openai": "^7.39.0",
+    "unpdf": "^1.9.1"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true
+}

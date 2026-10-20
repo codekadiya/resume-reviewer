@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resume Reviewer</title>
+<meta name="description" content="Upload your resume PDF and get blunt, structured feedback: strengths, gaps and line-by-line rewrites.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f3ec; --card: #fffdf8; --ink: #1c1b19; --muted: #6b675e; --line: #e2ddd1;
+    --red: #c8361f; --red-soft: #fbe9e4; --green: #2f6b45; --green-soft: #e5f1e8; --amber: #a86a0f; --amber-soft: #fbf0dc;
+    --serif: "Instrument Serif", Georgia, serif; --sans: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #151412; --card: #1d1c19; --ink: #efebe2; --muted: #a29d91; --line: #34312b;
+      --red: #ec6a52; --red-soft: #3a1f19; --green: #6dbb87; --green-soft: #1b2c21; --amber: #e0a446; --amber-soft: #33270f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.55 var(--sans); }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 48px 16px 80px; }
+  header h1 { font: 400 clamp(44px, 8vw, 72px)/1 var(--serif); margin: 0 0 12px; letter-spacing: -0.01em; }
+  header h1 em { color: var(--red); }
+  header p { color: var(--muted); margin: 0 0 36px; max-width: 560px; font-size: 17px; }
+
+  form { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
+  .drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 36px 16px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--red); background: var(--red-soft); }
+  .drop strong { display: block; font-weight: 600; margin-bottom: 4px; }
+  .drop span { color: var(--muted); font-size: 14px; }
+  .drop.has-file strong { color: var(--red); }
+  input[type=file] { display: none; }
+  label.t { display: block; margin: 20px 0 6px; font-weight: 500; font-size: 14px; }
+  label.t small { color: var(--muted); font-weight: 400; }
+  textarea { width: 100%; min-height: 84px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: 14px/1.5 var(--sans); background: var(--paper); color: var(--ink); }
+  textarea:focus { outline: 2px solid var(--red); outline-offset: -1px; }
+  .row { display: flex; align-items: center; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
+  button { background: var(--ink); color: var(--paper); border: 0; border-radius: 8px; padding: 12px 22px; font: 600 15px var(--sans); cursor: pointer; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .note { color: var(--muted); font-size: 13px; }
+  .err { margin-top: 16px; padding: 12px 14px; border-radius: 8px; background: var(--red-soft); color: var(--red); display: none; }
+
+  .loading { display: none; text-align: center; padding: 48px 0; color: var(--muted); }
+  .pen { width: 64px; height: 3px; margin: 0 auto 16px; background: var(--red); border-radius: 2px; animation: scribble 1.1s ease-in-out infinite; transform-origin: left; }
+  @keyframes scribble { 0% { transform: scaleX(.1); } 50% { transform: scaleX(1); } 100% { transform: scaleX(.1); transform-origin: right; } }
+
+  #result { display: none; margin-top: 40px; }
+  .hero { display: grid; grid-template-columns: auto 1fr; gap: 28px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 28px; }
+  .score { width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; border: 3px solid var(--red); }
+  .score b { font: 400 54px/1 var(--serif); }
+  .score small { display: block; text-align: center; font: 12px var(--mono); color: var(--muted); }
+  .hero .headline { font: 500 13px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .hero .verdict { font: 400 24px/1.3 var(--serif); margin-top: 6px; }
+  .bars { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 16px; }
+  .bar span { font: 12px var(--mono); color: var(--muted); display: flex; justify-content: space-between; }
+  .bar i { display: block; height: 5px; background: var(--line); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .bar i::after { content: ""; display: block; height: 100%; width: var(--w); background: var(--ink); }
+
+  h2 { font: 400 34px/1.1 var(--serif); margin: 48px 0 16px; }
+  h2 em { color: var(--red); font-style: italic; }
+  .grid { display: grid; gap: 12px; }
+  .item { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; border-left: 4px solid var(--green); }
+  .item.gap { border-left-color: var(--red); }
+  .item.gap.medium { border-left-color: var(--amber); }
+  .item.gap.low { border-left-color: var(--muted); }
+  .item h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+  .item p { margin: 0; color: var(--muted); }
+  .tag { font: 500 11px var(--mono); text-transform: uppercase; padding: 2px 7px; border-radius: 4px; background: var(--red-soft); color: var(--red); white-space: nowrap; }
+  .tag.medium { background: var(--amber-soft); color: var(--amber); }
+  .tag.low { background: var(--line); color: var(--muted); }
+
+  .rw { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .rw .sec { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 12px 18px 0; }
+  .rw .before { padding: 8px 18px; text-decoration: line-through; text-decoration-color: var(--red); text-decoration-thickness: 1.5px; color: var(--muted); }
+  .rw .after { padding: 12px 18px; background: var(--green-soft); position: relative; }
+  .rw .after button { position: absolute; top: 8px; right: 8px; padding: 4px 10px; font-size: 12px; background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+  .rw .after p { margin: 0; padding-right: 64px; }
+  .rw .why { padding: 10px 18px 14px; font-size: 14px; color: var(--muted); }
+  .rw .why::before { content: "Why: "; font-weight: 600; color: var(--ink); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font: 13px var(--mono); padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
+  ol.wins { padding-left: 20px; margin: 0; }
+  ol.wins li { margin-bottom: 8px; }
+  .again { margin-top: 40px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: 13px; }
+
+  @media (max-width: 640px) {
+    .hero { grid-template-columns: 1fr; justify-items: start; }
+    .bars { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Resume <em>Reviewer</em></h1>
+    <p>Drop in your resume PDF. Get a blunt score, what's working, what's hurting you, and line-by-line rewrites you can paste straight in.</p>
+  </header>
+
+  <form id="f">
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose resume PDF">
+      <strong id="dropTitle">Choose a PDF or drag it here</strong>
+      <span id="dropSub">Text-based PDF, up to 5 MB</span>
+    </div>
+    <input type="file" id="file" accept="application/pdf,.pdf">
+    <label class="t" for="target">Target role or job description <small>(optional, makes feedback sharper)</small></label>
+    <textarea id="target" maxlength="4000" placeholder="e.g. Senior Product Designer at a B2B SaaS company, or paste the full job posting"></textarea>
+    <div class="row">
+      <button type="submit" id="go" disabled>Review my resume</button>
+      <span class="note">Your resume is read in memory and never stored.</span>
+    </div>
+    <div class="err" id="err"></div>
+  </form>
+
+  <div class="loading" id="loading"><div class="pen"></div>Reading every line… this takes about 20 seconds.</div>
+
+  <section id="result"></section>
+
+  <footer>Feedback is AI-generated. Use your judgment before sending anything out.</footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let file = null;
+
+function setFile(f) {
+  if (!f) return;
+  if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf") return showErr("That isn't a PDF.");
+  if (f.size > 5 * 1024 * 1024) return showErr("That PDF is over 5 MB.");
+  file = f; showErr("");
+  $("drop").classList.add("has-file");
+  $("dropTitle").textContent = f.name;
+  $("dropSub").textContent = (f.size / 1024).toFixed(0) + " KB · click to change";
+  $("go").disabled = false;
+}
+function showErr(msg) { $("err").textContent = msg; $("err").style.display = msg ? "block" : "none"; }
+
+$("drop").onclick = () => $("file").click();
+$("drop").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } };
+$("file").onchange = (e) => setFile(e.target.files[0]);
+["dragenter", "dragover"].forEach((ev) => $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.remove("over"); }));
+$("drop").addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
+
+$("f").onsubmit = async (e) => {
+  e.preventDefault();
+  if (!file) return;
+  showErr("");
+  $("go").disabled = true;
+  $("loading").style.display = "block";
+  $("result").style.display = "none";
+  const body = new FormData();
+  body.append("resume", file);
+  body.append("target", $("target").value);
+  try {
+    const r = await fetch("/api/review", { method: "POST", body });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || "Something went wrong.");
+    render(data.feedback);
+  } catch (err) {
+    showErr(err.message);
+  } finally {
+    $("loading").style.display = "none";
+    $("go").disabled = false;
+  }
+};
+
+function render(fb) {
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  const sb = fb.score_breakdown || {};
+  const labels = { impact: "Impact", clarity: "Clarity", structure: "Structure", ats_readiness: "ATS", relevance: "Relevance" };
+  const bars = Object.keys(labels).map((k) => {
+    const v = Math.max(0, Math.min(10, Number(sb[k]) || 0));
+    return `<div class="bar"><span>${labels[k]}<b>${v}</b></span><i style="--w:${v * 10}%"></i></div>`;
+  }).join("");
+  const sevOrder = { high: 0, medium: 1, low: 2 };
+  const gaps = arr(fb.gaps).sort((a, b) => (sevOrder[a.severity] ?? 1) - (sevOrder[b.severity] ?? 1));
+
+  $("result").innerHTML = `
+    <div class="hero">
+      <div class="score"><div><b>${esc(fb.overall_score)}</b><small>/ 100</small></div></div>
+      <div>
+        <div class="headline">${esc(fb.candidate_headline)}</div>
+        <div class="verdict">${esc(fb.verdict)}</div>
+        <div class="bars">${bars}</div>
+      </div>
+    </div>
+
+    <h2>What's <em>working</em></h2>
+    <div class="grid">${arr(fb.strengths).map((s) => `<div class="item"><h3>${esc(s.title)}</h3><p>${esc(s.detail)}</p></div>`).join("")}</div>
+
+    <h2>What's <em>hurting</em> you</h2>
+    <div class="grid">${gaps.map((g) => {
+      const sev = ["high", "medium", "low"].includes(g.severity) ? g.severity : "medium";
+      return `<div class="item gap ${sev}"><h3>${esc(g.title)}<span class="tag ${sev}">${sev}</span></h3><p>${esc(g.detail)}</p></div>`;
+    }).join("")}</div>
+
+    <h2>Rewrite <em>suggestions</em></h2>
+    <div class="grid">${arr(fb.rewrite_suggestions).map((r, i) => `
+      <div class="rw">
+        <div class="sec">${esc(r.section)}</div>
+        <div class="before">${esc(r.original)}</div>
+        <div class="after"><p id="rw${i}">${esc(r.rewrite)}</p><button type="button" data-copy="rw${i}">Copy</button></div>
+        <div class="why">${esc(r.why)}</div>
+      </div>`).join("")}</div>
+
+    ${arr(fb.missing_keywords).length ? `<h2>Missing <em>keywords</em></h2>
+    <div class="chips">${arr(fb.missing_keywords).map((k) => `<span class="chip">${esc(k)}</span>`).join("")}</div>` : ""}
+
+    ${arr(fb.quick_wins).length ? `<h2>Ten-minute <em>fixes</em></h2>
+    <ol class="wins">${arr(fb.quick_wins).map((w) => `<li>${esc(w)}</li>`).join("")}</ol>` : ""}
+
+    <div class="again"><button type="button" id="again">Review another resume</button></div>
+  `;
+  $("result").style.display = "block";
+  $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("result").querySelectorAll("[data-copy]").forEach((b) => b.onclick = async () => {
+    try { await navigator.clipboard.writeText($(b.dataset.copy).textContent); b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1500); } catch {}
+  });
+  $("again").onclick = () => { window.scrollTo({ top: 0, behavior: "smooth" }); };
+}
+</script>
+</body>
+</html>
