@@ -1,11 +1,13 @@
 // Resume Reviewer: upload a PDF resume, get structured feedback from a model on Roar AI.
-// Needs ROAR_API_KEY in the environment. Resumes are processed in memory and never stored.
+// Needs ROAR_API_KEY. Uploaded PDFs go to Roar file storage (S3_*) and are purged after RETENTION_HOURS (default 24).
 import express from "express";
 import multer from "multer";
 import OpenAI from "openai";
 import { extractText, getDocumentProxy } from "unpdf";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { timingSafeEqual } from "node:crypto";
+import { saveResume, purgeExpired, storageEnabled, RETENTION_HOURS } from "./storage.js";
 
 const PORT = Number(process.env.PORT) || 3000;
 const BASE_URL = process.env.ROAR_BASE_URL || "https://api.roar-ai.com/v1";
@@ -22,7 +24,31 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 app.set("trust proxy", true);
 app.use(express.static(path.join(__dirname, "public")));
-app.get("/healthz", (_req, res) => res.json({ ok: true }));
+app.get("/healthz", (_req, res) => res.json({ ok: true, storage: storageEnabled, retentionHours: RETENTION_HOURS }));
+app.get("/api/config", (_req, res) => res.json({ storage: storageEnabled, retentionHours: RETENTION_HOURS }));
+
+// Called by the Roar scheduled job. Roar sends the secret as a Bearer token and in x-roar-cron-secret.
+function cronAuthorized(req) {
+  const secret = process.env.CRON_SECRET || process.env.ROAR_CRON_SECRET;
+  if (!secret) return false;
+  const sent = (req.get("authorization") || "").replace(/^Bearer\s+/i, "") || req.get("x-roar-cron-secret") || "";
+  const a = Buffer.from(sent), b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+async function runPurge(source) {
+  const result = await purgeExpired();
+  console.log(`purge (${source}): ${JSON.stringify(result)}`);
+  return result;
+}
+app.all("/api/cron/purge-expired", async (req, res) => {
+  if (!cronAuthorized(req)) return res.status(401).json({ error: "unauthorized" });
+  try {
+    res.json(await runPurge("cron"));
+  } catch (err) {
+    console.error("purge failed:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Simple in-memory per-IP limit so a single visitor can't drain the budget.
 const hits = new Map();
@@ -123,10 +149,19 @@ app.post("/api/review", (req, res) => {
       return res.status(400).json({ error: "This PDF has almost no selectable text (probably a scanned image). Export your resume as a text-based PDF and try again." });
     }
 
+    // Keep the original PDF for the retention window. A storage hiccup must not block the review.
+    let stored = null;
+    try {
+      stored = await saveResume(buf, req.file.originalname);
+      if (stored) console.log(`stored ${stored.key} (${buf.length} bytes), expires ${stored.expiresAt}`);
+    } catch (err) {
+      console.error("storage save failed:", err.message);
+    }
+
     const target = String(req.body?.target || "").slice(0, 4000).trim();
     try {
       const { model, feedback } = await review(text.slice(0, MAX_RESUME_CHARS), target);
-      res.json({ model, feedback });
+      res.json({ model, feedback, stored: stored && { id: stored.id, uploadedAt: stored.uploadedAt, expiresAt: stored.expiresAt, url: stored.url } });
     } catch (err) {
       console.error("Review failed:", err.message);
       res.status(502).json({ error: "The reviewer is busy right now. Give it another try in a minute." });
@@ -134,4 +169,8 @@ app.post("/api/review", (req, res) => {
   });
 });
 
-app.listen(PORT, "0.0.0.0", () => console.log(`resume-reviewer listening on ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`resume-reviewer listening on ${PORT} (storage: ${storageEnabled ? "on" : "off"}, retention ${RETENTION_HOURS}h)`);
+  // Catch anything that expired while the app was down; the scheduled job handles the rest.
+  if (storageEnabled) runPurge("startup").catch((err) => console.error("startup purge failed:", err.message));
+});

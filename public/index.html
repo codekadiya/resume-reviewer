@@ -87,6 +87,8 @@
   ol.wins { padding-left: 20px; margin: 0; }
   ol.wins li { margin-bottom: 8px; }
   .again { margin-top: 40px; }
+  .stored { margin-top: 12px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 14px; color: var(--muted); }
+  .stored a { color: var(--ink); font-weight: 600; }
   footer { margin-top: 64px; color: var(--muted); font-size: 13px; }
 
   @media (max-width: 640px) {
@@ -112,7 +114,7 @@
     <textarea id="target" maxlength="4000" placeholder="e.g. Senior Product Designer at a B2B SaaS company, or paste the full job posting"></textarea>
     <div class="row">
       <button type="submit" id="go" disabled>Review my resume</button>
-      <span class="note">Your resume is read in memory and never stored.</span>
+      <span class="note" id="privacy">Your resume is read in memory and never stored.</span>
     </div>
     <div class="err" id="err"></div>
   </form>
@@ -128,6 +130,9 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 let file = null;
+fetch("/api/config").then((r) => r.json()).then((c) => {
+  if (c.storage) $("privacy").textContent = `Your PDF is kept privately for ${c.retentionHours} hours, then deleted automatically.`;
+}).catch(() => {});
 
 function setFile(f) {
   if (!f) return;
@@ -162,7 +167,7 @@ $("f").onsubmit = async (e) => {
     const r = await fetch("/api/review", { method: "POST", body });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || "Something went wrong.");
-    render(data.feedback);
+    render(data.feedback, data.stored);
   } catch (err) {
     showErr(err.message);
   } finally {
@@ -171,7 +176,7 @@ $("f").onsubmit = async (e) => {
   }
 };
 
-function render(fb) {
+function render(fb, stored) {
   const arr = (x) => (Array.isArray(x) ? x : []);
   const sb = fb.score_breakdown || {};
   const labels = { impact: "Impact", clarity: "Clarity", structure: "Structure", ats_readiness: "ATS", relevance: "Relevance" };
@@ -191,6 +196,7 @@ function render(fb) {
         <div class="bars">${bars}</div>
       </div>
     </div>
+    ${stored ? `<div class="stored"><span>PDF stored until ${esc(new Date(stored.expiresAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))}, then auto-deleted.</span><a href="${esc(stored.url)}" target="_blank" rel="noopener">View stored file</a></div>` : ""}
 
     <h2>What's <em>working</em></h2>
     <div class="grid">${arr(fb.strengths).map((s) => `<div class="item"><h3>${esc(s.title)}</h3><p>${esc(s.detail)}</p></div>`).join("")}</div>
